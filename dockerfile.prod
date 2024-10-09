@@ -1,0 +1,57 @@
+# Base dependencies layer
+FROM node:21-alpine3.19 AS base
+
+WORKDIR /usr/src/app
+
+COPY package.json pnpm-lock.yaml ./
+
+RUN npm install -g pnpm
+
+# Install dependencies only once
+RUN pnpm install --frozen-lockfile
+
+# Builder - build the application
+FROM node:21-alpine3.19 AS build
+
+WORKDIR /usr/src/app
+
+COPY --from=base /usr/src/app/node_modules ./node_modules
+COPY . .
+
+RUN npm install -g pnpm
+
+# Generate Prisma client
+RUN pnpm prisma generate
+
+# Build the NestJS application
+RUN pnpm build
+
+# Prune development dependencies
+RUN pnpm prune --prod
+
+# Remove unnecessary files from node_modules to further reduce size
+RUN find ./node_modules -name "*.md" -type f -delete \
+  && find ./node_modules -name "*.ts" -type f -delete \
+  && find ./node_modules -name "*.map" -type f -delete \
+  && find ./node_modules -name "test" -type d -exec rm -rf {} + \
+  && find ./node_modules -name "tests" -type d -exec rm -rf {} +
+
+# Final image
+FROM node:21-alpine3.19 AS prod
+
+WORKDIR /usr/src/app
+
+# Copy only the necessary files for production
+COPY --from=build /usr/src/app/node_modules ./node_modules
+COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/prisma ./prisma
+COPY --from=build /usr/src/app/package.json ./package.json
+
+ENV NODE_ENV=production
+
+USER node
+
+EXPOSE 3000
+
+# Ensure Prisma migrations are applied before starting the app
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
