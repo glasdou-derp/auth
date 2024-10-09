@@ -8,6 +8,14 @@ import { ListResponse, PaginationDto } from 'src/common';
 import { hasRoles, ObjectManipulator } from 'src/helpers';
 import { CreateUserDto, UpdateUserDto } from './dto';
 
+const USER_INCLUDE = {
+  createdBy: { select: { id: true, username: true, email: true } },
+  updatedBy: { select: { id: true, username: true, email: true } },
+  deletedBy: { select: { id: true, username: true, email: true } },
+};
+
+const EXCLUDE_FIELDS: (keyof User)[] = ['password', 'createdById', 'updatedById', 'deletedById'];
+
 @Injectable()
 export class UsersService extends PrismaClient implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);
@@ -17,15 +25,10 @@ export class UsersService extends PrismaClient implements OnModuleInit {
     this.logger.log('Connected to the database \\(^.^)/');
   }
 
-  /**
-   * Creates a new user with the provided data.
-   *
-   * @param {CreateUserDto} createUserDto - The data transfer object containing the information to create the user.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the created user object.
-   */
-  async create(createUserDto: CreateUserDto): Promise<User> {
+  async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
     try {
       const { password, ...data } = createUserDto;
+      this.logger.log(`Creating user: ${JSON.stringify(data)}`);
 
       const userPassword = password || this.generateRandomPassword();
 
@@ -33,7 +36,9 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       const newUser = await this.user.create({ data: { ...data, password: hashedPassword } });
 
-      return { ...newUser, password: userPassword };
+      const cleanUser = ObjectManipulator.exclude(newUser, ['password', 'createdById', 'updatedById', 'deletedById']);
+
+      return { ...cleanUser, password: userPassword };
     } catch (error) {
       this.logger.error(error);
       throw new RpcException({
@@ -43,213 +48,162 @@ export class UsersService extends PrismaClient implements OnModuleInit {
     }
   }
 
-  /**
-   * Retrieves a paginated list of users based on the provided pagination parameters and user roles.
-   *
-   * @param {PaginationDto} paginationDto - The pagination parameters including page number and limit.
-   * @param {CurrentUser} user - The user making the request, used to determine access level.
-   * @returns {Promise<ListResponse<User>>} A promise that resolves to a paginated list of users with metadata.
-   */
-  async findAll(paginationDto: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
-    const { page, limit } = paginationDto;
-    const isAdmin = hasRoles(user.roles, [Role.Admin]);
+  async findAll(pagination: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
+    try {
+      this.logger.log(`findAll() - ${JSON.stringify(pagination)} ,requesting: ${user.id}`);
+      const { page, limit } = pagination;
+      const isAdmin = hasRoles(user.roles, [Role.Admin]);
 
-    const where = isAdmin ? {} : { deletedAt: null };
+      const where = isAdmin ? {} : { deletedAt: null };
 
-    const [data, total] = await Promise.all([
-      this.user.findMany({ take: limit, skip: (page - 1) * limit, where }),
-      this.user.count({ where }),
-    ]);
+      const [data, total] = await Promise.all([
+        this.user.findMany({ take: limit, skip: (page - 1) * limit, where }),
+        this.user.count({ where }),
+      ]);
 
-    const lastPage = Math.ceil(total / limit);
+      const lastPage = Math.ceil(total / limit);
 
-    return {
-      meta: { total, page, lastPage },
-      data: data.map((item) => ObjectManipulator.exclude(item, ['password'])),
-    };
-  }
-
-  /**
-   * Retrieves a user by their ID, including the creator's information.
-   *
-   * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified ID is not found.
-   */
-  async findOne(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
-
-    const where = idAdmin ? { id } : { id, deletedAt: null };
-
-    const user = await this.user.findFirst({
-      where,
-      include: {
-        createdBy: { select: { id: true, username: true, email: true } },
-        updatedBy: { select: { id: true, username: true, email: true } },
-        deletedBy: { select: { id: true, username: true, email: true } },
-      },
-    });
-
-    if (!user)
-      throw new RpcException({
-        status: HttpStatus.NOT_FOUND,
-        message: `User with id ${id} not found`,
-      });
-
-    return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
-  }
-
-  /**
-   * Retrieves a user by their email or username, including the creator's information.
-   *
-   * @param {{ email?: string; username?: string }} data - An object containing either email or username to search for the user.
-   * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified email or username is not found.
-   */
-  async findByUsername(username: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
-    const where = idAdmin ? { username } : { username, deletedAt: null };
-
-    const user = await this.user.findFirst({
-      where,
-      include: {
-        createdBy: { select: { id: true, username: true, email: true } },
-        updatedBy: { select: { id: true, username: true, email: true } },
-        deletedBy: { select: { id: true, username: true, email: true } },
-      },
-    });
-
-    if (!user) {
-      throw new RpcException({
-        status: HttpStatus.NOT_FOUND,
-        message: `User with username ${username} not found`,
-      });
+      return {
+        meta: { total, page, lastPage },
+        data: data.map((item) => ObjectManipulator.exclude(item, ['password'])),
+      };
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching users' });
     }
-
-    return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
   }
 
-  /**
-   * Retrieves a user by their ID, including additional metadata like creator and creatorOf information.
-   *
-   * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object with metadata, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified ID is not found.
-   */
+  async findOne(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    try {
+      this.logger.log(`findOne() - ${id}, requesting: ${currentUser.id}`);
+      const isAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+
+      const where = isAdmin ? { id } : { id, deletedAt: null };
+
+      const user = await this.user.findFirst({ where, include: USER_INCLUDE });
+
+      if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
+
+      return this.excludeFields(user);
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
+    }
+  }
+
+  async findByUsername(username: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    try {
+      this.logger.log(`findByUsername() - ${username}, requesting: ${currentUser.id}`);
+      const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+      const where = idAdmin ? { username } : { username, deletedAt: null };
+
+      const user = await this.user.findFirst({ where, include: USER_INCLUDE });
+
+      if (!user)
+        throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with username ${username} not found` });
+
+      return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
+    }
+  }
+
   async findOneWithMeta(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
-    const where = idAdmin ? { id } : { id, deletedAt: null };
+    try {
+      this.logger.log(`findOneWithMeta() - ${id}, requesting: ${currentUser.id}`);
+      const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+      const where = idAdmin ? { id } : { id, deletedAt: null };
 
-    const user = await this.user.findUnique({
-      where,
-      include: {
-        createdBy: { select: { id: true, username: true, email: true } },
-        updatedBy: { select: { id: true, username: true, email: true } },
-        deletedBy: { select: { id: true, username: true, email: true } },
+      const user = await this.user.findUnique({ where, include: USER_INCLUDE });
 
-        creatorOf: { select: { id: true, username: true, email: true, createdAt: true } },
-        updaterOf: { select: { id: true, username: true, email: true, updatedAt: true } },
-        deleterOf: { select: { id: true, username: true, email: true, deletedAt: true } },
-      },
-    });
+      if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
 
-    if (!user)
-      throw new RpcException({
-        status: HttpStatus.NOT_FOUND,
-        message: `User with id ${id} not found`,
-      });
-
-    return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
+      return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
+    }
   }
 
-  /**
-   * Retrieves a user by their ID with a summary of basic information.
-   *
-   * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object containing only basic information.
-   * @throws {RpcException} If the user with the specified ID is not found.
-   */
   async findOneWithSummary(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
-    const where = idAdmin ? { id } : { id, deletedAt: null };
+    try {
+      this.logger.log(`findOneWithSummary() - ${id}, requesting: ${currentUser.id}`);
+      const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+      const where = idAdmin ? { id } : { id, deletedAt: null };
 
-    const user = await this.user.findUnique({
-      where,
-      select: { id: true, username: true, email: true },
-    });
+      const user = await this.user.findFirst({ where, select: { id: true, username: true, email: true } });
 
-    if (!user)
-      throw new RpcException({
-        status: HttpStatus.NOT_FOUND,
-        message: `User with id ${id} not found`,
-      });
+      if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
 
-    return user;
+      return user;
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
+    }
   }
 
-  /**
-   * Updates a user with the provided data.
-   *
-   * @param {UpdateUserDto} updateUserDto - The data transfer object containing the information to update the user.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified ID is not found.
-   */
   async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<Partial<User>> {
-    const { id, ...data } = updateUserDto;
+    try {
+      this.logger.log(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
+      const { id, ...data } = updateUserDto;
 
-    await this.findOne(id, currentUser);
+      await this.findOne(id, currentUser);
 
-    const updatedUser = await this.user.update({ where: { id }, data: { ...data, updatedById: currentUser.id } });
+      const updatedUser = await this.user.update({
+        where: { id },
+        data: { ...data, updatedById: currentUser.id },
+        include: USER_INCLUDE,
+      });
 
-    return ObjectManipulator.exclude(updatedUser, ['password', 'createdById', 'updatedById', 'deletedById']);
+      return this.excludeFields(updatedUser);
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error updating the user' });
+    }
   }
 
-  /**
-   * Soft deletes a user by marking them as disabled.
-   *
-   * @param {string} id - The ID of the user to remove.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified ID is not found or is already disabled.
-   */
   async remove(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const user = await this.findOne(id, currentUser);
+    try {
+      this.logger.log(`Removing user: ${id}, requesting: ${currentUser.id}`);
 
-    if (user.deletedAt)
-      throw new RpcException({
-        status: HttpStatus.CONFLICT,
-        message: `User with id ${id} is already disabled`,
+      const user = await this.findOne(id, currentUser);
+
+      if (user.deletedAt)
+        throw new RpcException({ status: HttpStatus.CONFLICT, message: `User with id ${id} is already disabled` });
+
+      const updatedUser = await this.user.update({
+        where: { id },
+        data: { deletedAt: new Date(), deletedById: currentUser.id },
+        include: USER_INCLUDE,
       });
 
-    const updatedUser = await this.user.update({
-      where: { id },
-      data: { deletedAt: new Date(), deletedById: currentUser.id },
-    });
-
-    return ObjectManipulator.exclude(updatedUser, ['password', 'createdById', 'updatedById', 'deletedById']);
+      return this.excludeFields(updatedUser);
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error removing the user' });
+    }
   }
 
-  /**
-   * Restores a previously disabled user.
-   *
-   * @param {string} id - The ID of the user to restore.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
-   * @throws {RpcException} If the user with the specified ID is not found or is already enabled.
-   */
   async restore(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    const user = await this.findOne(id, currentUser);
+    try {
+      this.logger.log(`Restoring user: ${id}, requesting: ${currentUser.id}`);
+      const user = await this.findOne(id, currentUser);
 
-    if (user.deletedAt === null)
-      throw new RpcException({
-        status: HttpStatus.CONFLICT,
-        message: `User with id ${id} is already enabled`,
+      if (user.deletedAt === null)
+        throw new RpcException({ status: HttpStatus.CONFLICT, message: `User with id ${id} is already enabled` });
+
+      const updatedUser = await this.user.update({
+        where: { id },
+        data: { deletedAt: null, deletedById: null, updatedById: currentUser.id },
+        include: USER_INCLUDE,
       });
 
-    const updatedUser = await this.user.update({
-      where: { id },
-      data: { deletedAt: null, deletedById: null, updatedById: currentUser.id },
-    });
-
-    return ObjectManipulator.exclude(updatedUser, ['password', 'createdById', 'updatedById', 'deletedById']);
+      return this.excludeFields(updatedUser);
+    } catch (error) {
+      this.logger.log(error);
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error restoring the user' });
+    }
   }
 
   private generateRandomPassword(length: number = 6) {
@@ -262,5 +216,9 @@ export class UsersService extends PrismaClient implements OnModuleInit {
     for (let i = 0; i < length; i++) generatedPassword += chars.charAt(Math.floor(Math.random() * charsLength));
 
     return generatedPassword;
+  }
+
+  private excludeFields(user: User) {
+    return ObjectManipulator.exclude(user, EXCLUDE_FIELDS);
   }
 }
