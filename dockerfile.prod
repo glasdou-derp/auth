@@ -54,4 +54,4 @@ USER node
 EXPOSE 3000
 
 # Ensure Prisma migrations are applied before starting the app
-CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]
+CMD ["sh", "-c", "pnpm prisma migrate deploy && node dist/main.js"]

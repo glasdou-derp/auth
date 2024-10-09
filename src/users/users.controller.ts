@@ -1,9 +1,10 @@
 import { Controller, ParseUUIDPipe } from '@nestjs/common';
 import { MessagePattern, Payload } from '@nestjs/microservices';
 import { User } from '@prisma/client';
+
+import { CurrentUser } from 'src/auth';
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
-import { UserModel } from './interfaces';
 import { UsersService } from './users.service';
 
 @Controller()
@@ -34,11 +35,11 @@ export class UsersController {
   /**
    * Handles the 'users.findAll' message pattern to retrieve a paginated list of users.
    *
-   * @param {{ paginationDto: PaginationDto; user: UserModel }} payload - An object containing pagination parameters and the requesting user.
+   * @param {{ paginationDto: PaginationDto; user: CurrentUser }} payload - An object containing pagination parameters and the requesting user.
    * @returns {Promise<ListResponse<User>>} A promise that resolves to a paginated list of users with metadata.
    */
   @MessagePattern('users.findAll')
-  findAll(@Payload() payload: { paginationDto: PaginationDto; user: UserModel }): Promise<ListResponse<User>> {
+  findAll(@Payload() payload: { paginationDto: PaginationDto; user: CurrentUser }): Promise<ListResponse<User>> {
     const { paginationDto, user } = payload;
     return this.usersService.findAll(paginationDto, user);
   }

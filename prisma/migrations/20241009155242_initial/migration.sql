@@ -1,14 +1,5 @@
-/*
-  Warnings:
-
-  - You are about to drop the `users` table. If the table is not empty, all the data it contains will be lost.
-
-*/
--- DropForeignKey
-ALTER TABLE "users" DROP CONSTRAINT "users_createdBy_fkey";
-
--- DropTable
-DROP TABLE "users";
+-- CreateEnum
+CREATE TYPE "Role" AS ENUM ('User', 'Admin', 'Moderator', 'Guest');
 
 -- CreateTable
 CREATE TABLE "user" (
@@ -21,6 +12,8 @@ CREATE TABLE "user" (
     "updated_at" TIMESTAMP(3) NOT NULL,
     "deleted_at" TIMESTAMP(3),
     "created_by" TEXT,
+    "updated_by" TEXT,
+    "deleted_by" TEXT,
 
     CONSTRAINT "user_pkey" PRIMARY KEY ("id")
 );
@@ -33,3 +26,9 @@ CREATE UNIQUE INDEX "user_email_key" ON "user"("email");
 
 -- AddForeignKey
 ALTER TABLE "user" ADD CONSTRAINT "user_created_by_fkey" FOREIGN KEY ("created_by") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user" ADD CONSTRAINT "user_updated_by_fkey" FOREIGN KEY ("updated_by") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "user" ADD CONSTRAINT "user_deleted_by_fkey" FOREIGN KEY ("deleted_by") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;

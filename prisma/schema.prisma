@@ -28,6 +28,14 @@ model User {
   creator   User?   @relation("UserCreator", fields: [createdBy], references: [id])
   creatorOf User[]  @relation("UserCreator")
 
+  updatedBy String? @map("updated_by")
+  updater   User?   @relation("UserUpdater", fields: [updatedBy], references: [id])
+  updaterOf User[]  @relation("UserUpdater")
+
+  deletedBy String? @map("deleted_by")
+  deleter   User?   @relation("UserDeleter", fields: [deletedBy], references: [id])
+  deleterOf User[]  @relation("UserDeleter")
+
   @@map("user")
 }
 
@@ -35,4 +43,5 @@ enum Role {
   User
   Admin
   Moderator
+  Guest
 }

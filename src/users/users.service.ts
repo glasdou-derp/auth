@@ -3,11 +3,10 @@ import { RpcException } from '@nestjs/microservices';
 import { PrismaClient, Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+import { CurrentUser } from 'src/auth';
 import { ListResponse, PaginationDto } from 'src/common';
-import { ObjectManipulator } from 'src/helpers';
-import { hasRoles } from 'src/helpers/validate-roles.helper';
+import { hasRoles, ObjectManipulator } from 'src/helpers';
 import { CreateUserDto, UpdateUserDto } from './dto';
-import { UserModel } from './interfaces';
 
 @Injectable()
 export class UsersService extends PrismaClient implements OnModuleInit {
@@ -25,7 +24,9 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to the created user object.
    */
   async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
-    const user = await this.user.create({ data: { ...createUserDto, password: bcrypt.hashSync(createUserDto.password, 10) } });
+    const user = await this.user.create({
+      data: { ...createUserDto, password: bcrypt.hashSync(createUserDto.password, 10) },
+    });
 
     return ObjectManipulator.exclude(user, ['password']);
   }
@@ -34,10 +35,10 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * Retrieves a paginated list of users based on the provided pagination parameters and user roles.
    *
    * @param {PaginationDto} paginationDto - The pagination parameters including page number and limit.
-   * @param {UserModel} user - The user making the request, used to determine access level.
+   * @param {CurrentUser} user - The user making the request, used to determine access level.
    * @returns {Promise<ListResponse<User>>} A promise that resolves to a paginated list of users with metadata.
    */
-  async findAll(paginationDto: PaginationDto, user: UserModel): Promise<ListResponse<User>> {
+  async findAll(paginationDto: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
     const { page, limit } = paginationDto;
     const isAdmin = hasRoles(user.roles, [Role.Admin]);
 
