@@ -34,7 +34,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       const hashedPassword = bcrypt.hashSync(userPassword, 10);
 
-      const newUser = await this.user.create({ data: { ...data, password: hashedPassword } });
+      const newUser = await this.user.create({ data: { ...data, password: hashedPassword }, include: USER_INCLUDE });
 
       const cleanUser = ObjectManipulator.exclude(newUser, ['password', 'createdById', 'updatedById', 'deletedById']);
 
