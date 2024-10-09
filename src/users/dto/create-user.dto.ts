@@ -41,7 +41,8 @@ export class CreateUserDto {
   @IsString()
   @MinLength(6)
   @IsStrongPassword()
-  password: string;
+  @IsOptional()
+  password?: string;
 
   /**
    * The roles assigned to the user.
@@ -61,5 +62,5 @@ export class CreateUserDto {
    * @type {string}
    */
   @IsUUID()
-  createdBy: string;
+  createdById: string;
 }

@@ -23,12 +23,24 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @param {CreateUserDto} createUserDto - The data transfer object containing the information to create the user.
    * @returns {Promise<Partial<User>>} A promise that resolves to the created user object.
    */
-  async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
-    const user = await this.user.create({
-      data: { ...createUserDto, password: bcrypt.hashSync(createUserDto.password, 10) },
-    });
+  async create(createUserDto: CreateUserDto): Promise<User> {
+    try {
+      const { password, ...data } = createUserDto;
 
-    return ObjectManipulator.exclude(user, ['password']);
+      const userPassword = password || this.generateRandomPassword();
+
+      const hashedPassword = bcrypt.hashSync(userPassword, 10);
+
+      const newUser = await this.user.create({ data: { ...data, password: hashedPassword } });
+
+      return { ...newUser, password: userPassword };
+    } catch (error) {
+      this.logger.error(error);
+      throw new RpcException({
+        status: HttpStatus.BAD_REQUEST,
+        message: 'Error creating the user',
+      });
+    }
   }
 
   /**
@@ -43,14 +55,13 @@ export class UsersService extends PrismaClient implements OnModuleInit {
     const isAdmin = hasRoles(user.roles, [Role.Admin]);
 
     const where = isAdmin ? {} : { deletedAt: null };
-    const total = await this.user.count({ where });
-    const lastPage = Math.ceil(total / limit);
 
-    const data = await this.user.findMany({
-      take: limit,
-      skip: (page - 1) * limit,
-      where,
-    });
+    const [data, total] = await Promise.all([
+      this.user.findMany({ take: limit, skip: (page - 1) * limit, where }),
+      this.user.count({ where }),
+    ]);
+
+    const lastPage = Math.ceil(total / limit);
 
     return {
       meta: { total, page, lastPage },
@@ -65,13 +76,17 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object, excluding sensitive information.
    * @throws {RpcException} If the user with the specified ID is not found.
    */
-  async findOne(id: string): Promise<Partial<User>> {
-    const user = await this.user.findUnique({
-      where: { id },
+  async findOne(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+
+    const where = idAdmin ? { id } : { id, deletedAt: null };
+
+    const user = await this.user.findFirst({
+      where,
       include: {
-        creator: {
-          select: { id: true, username: true, email: true },
-        },
+        createdBy: { select: { id: true, username: true, email: true } },
+        updatedBy: { select: { id: true, username: true, email: true } },
+        deletedBy: { select: { id: true, username: true, email: true } },
       },
     });
 
@@ -91,25 +106,23 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object, excluding sensitive information.
    * @throws {RpcException} If the user with the specified email or username is not found.
    */
-  async findByEmailOrUsername(data: { email?: string; username?: string }): Promise<Partial<User>> {
-    const { email, username } = data;
+  async findByUsername(username: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+    const where = idAdmin ? { username } : { username, deletedAt: null };
 
     const user = await this.user.findFirst({
-      where: {
-        OR: [{ email }, { username }],
-      },
+      where,
       include: {
-        creator: {
-          select: { id: true, username: true, email: true },
-        },
+        createdBy: { select: { id: true, username: true, email: true } },
+        updatedBy: { select: { id: true, username: true, email: true } },
+        deletedBy: { select: { id: true, username: true, email: true } },
       },
     });
 
     if (!user) {
-      const filter = email ? 'email' : 'username';
       throw new RpcException({
         status: HttpStatus.NOT_FOUND,
-        message: `User with ${filter} ${email || username} not found`,
+        message: `User with username ${username} not found`,
       });
     }
 
@@ -123,16 +136,20 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object with metadata, excluding sensitive information.
    * @throws {RpcException} If the user with the specified ID is not found.
    */
-  async findOneWithMeta(id: string): Promise<Partial<User>> {
+  async findOneWithMeta(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+    const where = idAdmin ? { id } : { id, deletedAt: null };
+
     const user = await this.user.findUnique({
-      where: { id },
+      where,
       include: {
-        creator: {
-          select: { id: true, username: true, email: true },
-        },
-        creatorOf: {
-          select: { id: true, username: true, email: true, createdAt: true, updatedAt: true },
-        },
+        createdBy: { select: { id: true, username: true, email: true } },
+        updatedBy: { select: { id: true, username: true, email: true } },
+        deletedBy: { select: { id: true, username: true, email: true } },
+
+        creatorOf: { select: { id: true, username: true, email: true, createdAt: true } },
+        updaterOf: { select: { id: true, username: true, email: true, updatedAt: true } },
+        deleterOf: { select: { id: true, username: true, email: true, deletedAt: true } },
       },
     });
 
@@ -156,9 +173,12 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to a partial user object containing only basic information.
    * @throws {RpcException} If the user with the specified ID is not found.
    */
-  async findOneWithSummary(id: string): Promise<Partial<User>> {
+  async findOneWithSummary(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
+    const where = idAdmin ? { id } : { id, deletedAt: null };
+
     const user = await this.user.findUnique({
-      where: { id },
+      where,
       select: { id: true, username: true, email: true },
     });
 
@@ -178,12 +198,12 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    * @throws {RpcException} If the user with the specified ID is not found.
    */
-  async update(updateUserDto: UpdateUserDto): Promise<Partial<User>> {
+  async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<Partial<User>> {
     const { id, ...data } = updateUserDto;
 
-    await this.findOne(id);
+    await this.findOne(id, currentUser);
 
-    return this.user.update({ where: { id }, data });
+    return this.user.update({ where: { id }, data: { ...data, updatedById: currentUser.id } });
   }
 
   /**
@@ -193,8 +213,8 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    * @throws {RpcException} If the user with the specified ID is not found or is already disabled.
    */
-  async remove(id: string): Promise<Partial<User>> {
-    const user = await this.findOne(id);
+  async remove(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const user = await this.findOne(id, currentUser);
 
     if (user.deletedAt)
       throw new RpcException({
@@ -202,7 +222,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
         message: `User with id ${id} is already disabled`,
       });
 
-    return this.user.update({ where: { id }, data: { deletedAt: new Date() } });
+    return this.user.update({ where: { id }, data: { deletedAt: new Date(), deletedById: currentUser.id } });
   }
 
   /**
@@ -212,8 +232,8 @@ export class UsersService extends PrismaClient implements OnModuleInit {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    * @throws {RpcException} If the user with the specified ID is not found or is already enabled.
    */
-  async restore(id: string): Promise<Partial<User>> {
-    const user = await this.findOne(id);
+  async restore(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+    const user = await this.findOne(id, currentUser);
 
     if (user.deletedAt === null)
       throw new RpcException({
@@ -221,6 +241,21 @@ export class UsersService extends PrismaClient implements OnModuleInit {
         message: `User with id ${id} is already enabled`,
       });
 
-    return this.user.update({ where: { id }, data: { deletedAt: null } });
+    return this.user.update({
+      where: { id },
+      data: { deletedAt: null, deletedById: null, updatedById: currentUser.id },
+    });
+  }
+
+  private generateRandomPassword(length: number = 6) {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+
+    let generatedPassword = '';
+
+    const charsLength = chars.length;
+
+    for (let i = 0; i < length; i++) generatedPassword += chars.charAt(Math.floor(Math.random() * charsLength));
+
+    return generatedPassword;
   }
 }

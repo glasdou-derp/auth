@@ -1,7 +1,8 @@
-import { Controller, ParseUUIDPipe } from '@nestjs/common';
-import { MessagePattern, Payload } from '@nestjs/microservices';
+import { Controller, HttpStatus } from '@nestjs/common';
+import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { User } from '@prisma/client';
 
+import { isUUID } from 'class-validator';
 import { CurrentUser } from 'src/auth';
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
@@ -38,7 +39,7 @@ export class UsersController {
    * @param {{ paginationDto: PaginationDto; user: CurrentUser }} payload - An object containing pagination parameters and the requesting user.
    * @returns {Promise<ListResponse<User>>} A promise that resolves to a paginated list of users with metadata.
    */
-  @MessagePattern('users.findAll')
+  @MessagePattern('users.all')
   findAll(@Payload() payload: { paginationDto: PaginationDto; user: CurrentUser }): Promise<ListResponse<User>> {
     const { paginationDto, user } = payload;
     return this.usersService.findAll(paginationDto, user);
@@ -51,8 +52,12 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.id')
-  findOne(@Payload('id', ParseUUIDPipe) id: string): Promise<Partial<User>> {
-    return this.usersService.findOne(id);
+  findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { id, user } = payload;
+
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+
+    return this.usersService.findOne(id, user);
   }
 
   /**
@@ -62,19 +67,9 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.username')
-  findOneByUsername(@Payload('username') username: string): Promise<Partial<User>> {
-    return this.usersService.findByEmailOrUsername({ username });
-  }
-
-  /**
-   * Handles the 'users.find.email' message pattern to retrieve a user by their email.
-   *
-   * @param {string} email - The email of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the found user object, excluding sensitive information.
-   */
-  @MessagePattern('users.find.email')
-  findOneByEmail(@Payload('email') email: string): Promise<Partial<User>> {
-    return this.usersService.findByEmailOrUsername({ email });
+  findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { username, user } = payload;
+    return this.usersService.findByUsername(username, user);
   }
 
   /**
@@ -84,8 +79,12 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the found user object with metadata, excluding sensitive information.
    */
   @MessagePattern('users.find.meta')
-  findMeta(@Payload('id', ParseUUIDPipe) id: string): Promise<Partial<User>> {
-    return this.usersService.findOneWithMeta(id);
+  findMeta(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { id, user } = payload;
+
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+
+    return this.usersService.findOneWithMeta(id, user);
   }
 
   /**
@@ -95,8 +94,12 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the found user object containing only basic information.
    */
   @MessagePattern('users.find.summary')
-  findOneWithSummary(@Payload('id', ParseUUIDPipe) id: string): Promise<Partial<User>> {
-    return this.usersService.findOneWithSummary(id);
+  findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { id, user } = payload;
+
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+
+    return this.usersService.findOneWithSummary(id, user);
   }
 
   /**
@@ -106,8 +109,9 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.update')
-  update(@Payload() updateUserDto: UpdateUserDto): Promise<Partial<User>> {
-    return this.usersService.update(updateUserDto);
+  update(@Payload() payload: { updateUserDto: UpdateUserDto; user: CurrentUser }): Promise<Partial<User>> {
+    const { updateUserDto, user } = payload;
+    return this.usersService.update(updateUserDto, user);
   }
 
   /**
@@ -117,8 +121,12 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.remove')
-  remove(@Payload('id', ParseUUIDPipe) id: string): Promise<Partial<User>> {
-    return this.usersService.remove(id);
+  remove(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { id, user } = payload;
+
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+
+    return this.usersService.remove(id, user);
   }
 
   /**
@@ -128,7 +136,11 @@ export class UsersController {
    * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.restore')
-  restore(@Payload('id', ParseUUIDPipe) id: string): Promise<Partial<User>> {
-    return this.usersService.restore(id);
+  restore(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+    const { id, user } = payload;
+
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+
+    return this.usersService.restore(id, user);
   }
 }
