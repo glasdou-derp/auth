@@ -19,7 +19,7 @@ const USER_INCLUDE = {
 const EXCLUDE_FIELDS: (keyof User)[] = ['password', 'createdById', 'updatedById', 'deletedById'];
 
 @Injectable()
-export class UsersService {
+export class UserService {
   private readonly user: PrismaService['user'];
 
   constructor(
@@ -227,10 +227,10 @@ export class UsersService {
   }
 
   private logInfo(message: string) {
-    this.logger.log(message, { context: UsersService.name });
+    this.logger.log(message, { context: UserService.name });
   }
 
   private logError(message: string) {
-    this.logger.error(message, { context: UsersService.name });
+    this.logger.error(message, { context: UserService.name });
   }
 }

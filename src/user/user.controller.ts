@@ -5,12 +5,12 @@ import { isUUID } from 'class-validator';
 
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
-import { UsersService } from './users.service';
+import { UserService } from './user.service';
 import { CurrentUser } from './interfaces';
 
 @Controller()
-export class UsersController {
-  constructor(private readonly usersService: UsersService) {}
+export class UserController {
+  constructor(private readonly usersService: UserService) {}
 
   /**
    * Handles the 'users.health' message pattern to check the health of the users service.
