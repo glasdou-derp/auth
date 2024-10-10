@@ -7,7 +7,7 @@ import { envs } from 'src/config';
 import { ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { LoginDto } from './dto';
-import { AuthResponse, JwtPayload } from './interfaces';
+import { AuthResponse, JwtPayload, SignedToken } from './interfaces';
 
 @Injectable()
 export class AuthService {
@@ -64,15 +64,17 @@ export class AuthService {
     try {
       this.logger.log('Verifying token', { context: AuthService.name });
 
-      const payload = this.jwtService.verify(token, { secret: envs.jwtSecret });
+      const payload = this.jwtService.verify<SignedToken>(token, { secret: envs.jwtSecret });
 
-      ObjectManipulator.exclude(payload, ['exp', 'iat']);
+      const { id } = ObjectManipulator.exclude(payload, ['exp', 'iat']);
 
-      const user = await this.user.findFirst({ where: { id: payload.id } });
+      const user = await this.user.findFirst({ where: { id } });
 
       if (!user) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
 
-      return { user: user, token: this.signToken({ id: user.id }) };
+      const tokenSigned = this.signToken({ id: user.id });
+
+      return { user: user, token: tokenSigned };
     } catch (error) {
       this.logger.error(error.message, error.stack);
       throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
