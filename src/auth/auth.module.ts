@@ -1,13 +1,16 @@
 import { Module } from '@nestjs/common';
-import { AuthService } from './auth.service';
-import { AuthController } from './auth.controller';
-import { NatsModule } from 'src/transports/nats.module';
 import { JwtModule } from '@nestjs/jwt';
+
 import { envs } from 'src/config';
+import { LoggerModule } from 'src/logger/logger.module';
+import { PrismaService } from 'src/prisma/prisma.service';
+import { NatsModule } from 'src/transports/nats.module';
+import { AuthController } from './auth.controller';
+import { AuthService } from './auth.service';
 
 @Module({
   controllers: [AuthController],
-  providers: [AuthService],
+  providers: [AuthService, PrismaService],
   imports: [
     NatsModule,
     JwtModule.register({
@@ -15,6 +18,7 @@ import { envs } from 'src/config';
       secret: envs.jwtSecret,
       signOptions: { expiresIn: '4h' },
     }),
+    LoggerModule,
   ],
 })
 export class AuthModule {}

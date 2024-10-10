@@ -1,24 +1,24 @@
-import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, LoggerService } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
-import { PrismaClient } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { envs } from 'src/config';
 import { ObjectManipulator } from 'src/helpers';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { LoginDto } from './dto';
 import { AuthResponse, JwtPayload } from './interfaces';
 
 @Injectable()
-export class AuthService extends PrismaClient implements OnModuleInit {
-  private readonly logger = new Logger('AuthService');
+export class AuthService {
+  private readonly user: PrismaService['user'];
 
-  constructor(private readonly jwtService: JwtService) {
-    super();
-  }
-
-  async onModuleInit() {
-    await this.$connect();
-    this.logger.log('Connected to the database \\(^.^)/');
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
+    private readonly jwtService: JwtService,
+    private readonly prismaService: PrismaService,
+  ) {
+    this.user = this.prismaService.user;
   }
 
   /**
@@ -32,6 +32,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
    */
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     try {
+      this.logger.log(`Authenticating user with username: ${loginDto.username}`, { context: AuthService.name });
       const { username, password } = loginDto;
 
       const user = await this.user.findFirst({ where: { username } });
@@ -61,26 +62,17 @@ export class AuthService extends PrismaClient implements OnModuleInit {
    */
   async verifyToken(token: string): Promise<AuthResponse> {
     try {
-      const payload = this.jwtService.verify(token, {
-        secret: envs.jwtSecret,
-      });
+      this.logger.log('Verifying token', { context: AuthService.name });
 
-      ObjectManipulator.safeDelete(payload, 'exp');
-      ObjectManipulator.safeDelete(payload, 'iat');
+      const payload = this.jwtService.verify(token, { secret: envs.jwtSecret });
+
+      ObjectManipulator.exclude(payload, ['exp', 'iat']);
 
       const user = await this.user.findFirst({ where: { id: payload.id } });
 
-      if (!user) {
-        throw new RpcException({
-          status: HttpStatus.UNAUTHORIZED,
-          message: 'Invalid token',
-        });
-      }
+      if (!user) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
 
-      return {
-        user: user,
-        token: this.signToken({ id: user.id }),
-      };
+      return { user: user, token: this.signToken({ id: user.id }) };
     } catch (error) {
       this.logger.error(error.message, error.stack);
       throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
