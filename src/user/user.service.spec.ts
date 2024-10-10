@@ -1,5 +1,6 @@
+import { HttpStatus } from '@nestjs/common';
+import { RpcException } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
-import { User } from '@prisma/client';
 import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PaginationDto } from 'src/common';
 import { ObjectManipulator } from 'src/helpers';
@@ -7,8 +8,6 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { CurrentUser, Role, UserResponse, UserSummary } from './interfaces';
 import { UserService } from './user.service';
-import { HttpStatus } from '@nestjs/common';
-import { RpcException } from '@nestjs/microservices';
 
 const mockPrisma = {
   user: { create: jest.fn(), findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
@@ -369,7 +368,6 @@ describe('UserService', () => {
       mockPrisma.user.update.mockResolvedValue(restoredUser);
 
       const result = await userService.restore(userId, mockCurrentUser);
-      console.log('🚀 ~ it ~ result:', result, restoredUser);
 
       expect(result).toEqual(restoredUser);
       expect(mockPrisma.user.update).toHaveBeenCalledWith({
