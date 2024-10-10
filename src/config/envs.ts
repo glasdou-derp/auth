@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import joi from 'joi';
+import * as Joi from 'joi';
 
 interface EnvVars {
   PORT: number;
@@ -9,15 +9,13 @@ interface EnvVars {
   JWT_SECRET: string;
 }
 
-const envSchema = joi
-  .object({
-    PORT: joi.number().required(),
-    STATE: joi.string().required(),
-    DATABASE_URL: joi.string().required(),
-    NATS_SERVERS: joi.array().items(joi.string()).required(),
-    JWT_SECRET: joi.string().required(),
-  })
-  .unknown(true);
+const envSchema = Joi.object({
+  PORT: Joi.number().required(),
+  STATE: Joi.string().required(),
+  DATABASE_URL: Joi.string().required(),
+  NATS_SERVERS: Joi.array().items(Joi.string()).required(),
+  JWT_SECRET: Joi.string().required(),
+}).unknown(true);
 
 const { error, value } = envSchema.validate({ ...process.env, NATS_SERVERS: process.env.NATS_SERVERS?.split(',') });
 

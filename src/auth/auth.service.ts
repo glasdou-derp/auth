@@ -34,31 +34,20 @@ export class AuthService extends PrismaClient implements OnModuleInit {
     try {
       const { username, password } = loginDto;
 
-      const user = await this.user.findUnique({ where: { username } });
+      const user = await this.user.findFirst({ where: { username } });
 
-      if (!user)
-        throw new RpcException({
-          status: HttpStatus.UNAUTHORIZED,
-          message: 'Invalid credentials',
-        });
+      if (!user) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid credentials' });
 
       const isValidPassword = bcrypt.compareSync(password, user.password);
 
-      if (!isValidPassword)
-        throw new RpcException({
-          status: HttpStatus.UNAUTHORIZED,
-          message: 'Invalid credentials',
-        });
+      if (!isValidPassword) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid credentials' });
 
       ObjectManipulator.safeDelete(user, 'password');
 
-      return { user, token: await this.signToken({ id: user.id }) };
+      return { user, token: this.signToken({ id: user.id }) };
     } catch (error) {
       this.logger.error(error.message, error.stack);
-      throw new RpcException({
-        status: HttpStatus.BAD_REQUEST,
-        message: error.message,
-      });
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: error.message });
     }
   }
 
@@ -79,7 +68,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
       ObjectManipulator.safeDelete(payload, 'exp');
       ObjectManipulator.safeDelete(payload, 'iat');
 
-      const user = await this.user.findUnique({ where: { id: payload.id } });
+      const user = await this.user.findFirst({ where: { id: payload.id } });
 
       if (!user) {
         throw new RpcException({
@@ -90,14 +79,11 @@ export class AuthService extends PrismaClient implements OnModuleInit {
 
       return {
         user: user,
-        token: await this.signToken({ id: user.id }),
+        token: this.signToken({ id: user.id }),
       };
     } catch (error) {
       this.logger.error(error.message, error.stack);
-      throw new RpcException({
-        status: HttpStatus.UNAUTHORIZED,
-        message: 'Invalid token',
-      });
+      throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
     }
   }
 
@@ -108,7 +94,7 @@ export class AuthService extends PrismaClient implements OnModuleInit {
    * @param {string | number} [expiresIn='4h'] - The expiration time for the token, defaulting to 4 hours.
    * @returns {string} The signed JWT token.
    */
-  private signToken(payload: JwtPayload, expiresIn: string | number = '4h') {
+  private signToken(payload: JwtPayload, expiresIn: string | number = '4h'): string {
     return this.jwtService.sign(payload, { expiresIn });
   }
 }
