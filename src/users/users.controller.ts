@@ -1,12 +1,12 @@
 import { Controller, HttpStatus } from '@nestjs/common';
 import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { User } from '@prisma/client';
-
 import { isUUID } from 'class-validator';
-import { CurrentUser } from 'src/auth';
+
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { UsersService } from './users.service';
+import { CurrentUser } from './interfaces';
 
 @Controller()
 export class UsersController {
@@ -18,7 +18,7 @@ export class UsersController {
    * @returns {string} A message indicating the users service is up and running.
    */
   @MessagePattern('users.health')
-  health() {
+  health(): string {
     return 'users service is up and running!';
   }
 
@@ -55,7 +55,7 @@ export class UsersController {
   findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
     const { id, user } = payload;
 
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.findOne(id, user);
   }
@@ -69,6 +69,7 @@ export class UsersController {
   @MessagePattern('users.find.username')
   findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<Partial<User>> {
     const { username, user } = payload;
+
     return this.usersService.findByUsername(username, user);
   }
 
@@ -82,7 +83,7 @@ export class UsersController {
   findMeta(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
     const { id, user } = payload;
 
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.findOneWithMeta(id, user);
   }
@@ -97,7 +98,7 @@ export class UsersController {
   findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
     const { id, user } = payload;
 
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.findOneWithSummary(id, user);
   }
@@ -111,6 +112,7 @@ export class UsersController {
   @MessagePattern('users.update')
   update(@Payload() payload: { updateUserDto: UpdateUserDto; user: CurrentUser }): Promise<Partial<User>> {
     const { updateUserDto, user } = payload;
+
     return this.usersService.update(updateUserDto, user);
   }
 
@@ -124,7 +126,7 @@ export class UsersController {
   remove(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
     const { id, user } = payload;
 
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.remove(id, user);
   }
@@ -139,7 +141,7 @@ export class UsersController {
   restore(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
     const { id, user } = payload;
 
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID provided' });
+    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.restore(id, user);
   }

@@ -5,7 +5,7 @@ import { UsersModule } from './users/users.module';
 import { LoggerModule } from './logger/logger.module';
 
 @Module({
-  imports: [AuthModule, UsersModule, LoggerModule],
+  imports: [LoggerModule, AuthModule, UsersModule],
   providers: [PrismaService],
 })
 export class AppModule {}

@@ -1,12 +1,14 @@
-import { HttpStatus, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, LoggerService } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
-import { PrismaClient, Role, User } from '@prisma/client';
+import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { CurrentUser } from 'src/auth';
+import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ListResponse, PaginationDto } from 'src/common';
 import { hasRoles, ObjectManipulator } from 'src/helpers';
+import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
+import { CurrentUser } from './interfaces';
 
 const USER_INCLUDE = {
   createdBy: { select: { id: true, username: true, email: true } },
@@ -17,18 +19,20 @@ const USER_INCLUDE = {
 const EXCLUDE_FIELDS: (keyof User)[] = ['password', 'createdById', 'updatedById', 'deletedById'];
 
 @Injectable()
-export class UsersService extends PrismaClient implements OnModuleInit {
-  private readonly logger = new Logger(UsersService.name);
+export class UsersService {
+  private readonly user: PrismaService['user'];
 
-  async onModuleInit() {
-    await this.$connect();
-    this.logger.log('Connected to the database \\(^.^)/');
+  constructor(
+    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
+    private readonly prismaService: PrismaService,
+  ) {
+    this.user = this.prismaService.user;
   }
 
   async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
     try {
       const { password, ...data } = createUserDto;
-      this.logger.log(`Creating user: ${JSON.stringify(data)}`);
+      this.logInfo(`Creating user: ${JSON.stringify(data)}`);
 
       const userPassword = password || this.generateRandomPassword();
 
@@ -40,7 +44,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return { ...cleanUser, password: userPassword };
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({
         status: HttpStatus.BAD_REQUEST,
         message: 'Error creating the user',
@@ -50,14 +54,14 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
   async findAll(pagination: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
     try {
-      this.logger.log(`findAll() - ${JSON.stringify(pagination)} ,requesting: ${user.id}`);
+      this.logInfo(`findAll() - ${JSON.stringify(pagination)}, requesting: ${user.id}`);
       const { page, limit } = pagination;
       const isAdmin = hasRoles(user.roles, [Role.Admin]);
 
       const where = isAdmin ? {} : { deletedAt: null };
 
       const [data, total] = await Promise.all([
-        this.user.findMany({ take: limit, skip: (page - 1) * limit, where }),
+        this.user.findMany({ take: limit, skip: (page - 1) * limit, where, orderBy: { createdAt: 'desc' } }),
         this.user.count({ where }),
       ]);
 
@@ -68,14 +72,14 @@ export class UsersService extends PrismaClient implements OnModuleInit {
         data: data.map((item) => ObjectManipulator.exclude(item, ['password'])),
       };
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching users' });
     }
   }
 
   async findOne(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`findOne() - ${id}, requesting: ${currentUser.id}`);
+      this.logInfo(`findOne() - ${id}, requesting: ${currentUser.id}`);
       const isAdmin = hasRoles(currentUser.roles, [Role.Admin]);
 
       const where = isAdmin ? { id } : { id, deletedAt: null };
@@ -86,14 +90,14 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return this.excludeFields(user);
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
     }
   }
 
   async findByUsername(username: string, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`findByUsername() - ${username}, requesting: ${currentUser.id}`);
+      this.logInfo(`findByUsername() - ${username}, requesting: ${currentUser.id}`);
       const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
       const where = idAdmin ? { username } : { username, deletedAt: null };
 
@@ -102,16 +106,16 @@ export class UsersService extends PrismaClient implements OnModuleInit {
       if (!user)
         throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with username ${username} not found` });
 
-      return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
+      return this.excludeFields(user);
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
     }
   }
 
   async findOneWithMeta(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`findOneWithMeta() - ${id}, requesting: ${currentUser.id}`);
+      this.logInfo(`findOneWithMeta() - ${id}, requesting: ${currentUser.id}`);
       const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
       const where = idAdmin ? { id } : { id, deletedAt: null };
 
@@ -121,7 +125,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
     }
   }
@@ -145,7 +149,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
   async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
+      this.logInfo(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
       const { id, ...data } = updateUserDto;
 
       await this.findOne(id, currentUser);
@@ -158,14 +162,14 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error updating the user' });
     }
   }
 
   async remove(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`Removing user: ${id}, requesting: ${currentUser.id}`);
+      this.logInfo(`Removing user: ${id}, requesting: ${currentUser.id}`);
 
       const user = await this.findOne(id, currentUser);
 
@@ -180,14 +184,14 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      this.logger.error(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error removing the user' });
     }
   }
 
   async restore(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
     try {
-      this.logger.log(`Restoring user: ${id}, requesting: ${currentUser.id}`);
+      this.logInfo(`Restoring user: ${id}, requesting: ${currentUser.id}`);
       const user = await this.findOne(id, currentUser);
 
       if (user.deletedAt === null)
@@ -201,7 +205,7 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      this.logger.log(error);
+      this.logError(error);
       throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error restoring the user' });
     }
   }
@@ -220,5 +224,13 @@ export class UsersService extends PrismaClient implements OnModuleInit {
 
   private excludeFields(user: User) {
     return ObjectManipulator.exclude(user, EXCLUDE_FIELDS);
+  }
+
+  private logInfo(message: string) {
+    this.logger.log(message, { context: UsersService.name });
+  }
+
+  private logError(message: string) {
+    this.logger.error(message, { context: UsersService.name });
   }
 }
