@@ -3,11 +3,19 @@ import { Transform } from 'class-transformer';
 import { IsEmail, IsEnum, IsOptional, IsString, IsStrongPassword, IsUUID, MinLength } from 'class-validator';
 
 /**
- * Data Transfer Object (DTO) for creating a new user.
- * Validates the fields for username, email, password, roles, and createdBy.
- * Transforms the `username` and `email` to be trimmed and lowercase.
+ * Data Transfer Object (DTO) for updating a user's information.
+ * Extends the `CreateUserDto` with optional fields and includes the `id` of the user to be updated.
  */
-export class CreateUserDto {
+export class UpdateUserDto {
+  /**
+   * The unique identifier of the user to be updated.
+   * Must be a valid UUID.
+   *
+   * @type {string}
+   */
+  @IsUUID()
+  id: string;
+
   /**
    * The username of the user.
    * Must be a string with a minimum length of 2 characters.
@@ -18,7 +26,8 @@ export class CreateUserDto {
   @IsString()
   @MinLength(2)
   @Transform(({ value }) => value.trim().toLowerCase())
-  username: string;
+  @IsOptional()
+  username?: string;
 
   /**
    * The email address of the user.
@@ -30,7 +39,8 @@ export class CreateUserDto {
   @IsString()
   @IsEmail()
   @Transform(({ value }) => value.trim().toLowerCase())
-  email: string;
+  @IsOptional()
+  email?: string;
 
   /**
    * The password of the user.
@@ -41,7 +51,8 @@ export class CreateUserDto {
   @IsString()
   @MinLength(6)
   @IsStrongPassword()
-  password: string;
+  @IsOptional()
+  password?: string;
 
   /**
    * The roles assigned to the user.
@@ -53,13 +64,4 @@ export class CreateUserDto {
   @IsEnum(Role, { each: true })
   @IsOptional()
   roles: Role[];
-
-  /**
-   * The ID of the user who created this user.
-   * Must be a valid UUID.
-   *
-   * @type {string}
-   */
-  @IsUUID()
-  createdBy: string;
 }

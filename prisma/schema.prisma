@@ -24,17 +24,17 @@ model User {
   updatedAt DateTime  @updatedAt @map("updated_at")
   deletedAt DateTime? @map("deleted_at")
 
-  createdBy String? @map("created_by")
-  creator   User?   @relation("UserCreator", fields: [createdBy], references: [id])
-  creatorOf User[]  @relation("UserCreator")
+  createdById String? @map("created_by")
+  createdBy   User?   @relation("UserCreator", fields: [createdById], references: [id])
+  creatorOf   User[]  @relation("UserCreator")
 
-  updatedBy String? @map("updated_by")
-  updater   User?   @relation("UserUpdater", fields: [updatedBy], references: [id])
-  updaterOf User[]  @relation("UserUpdater")
+  updatedById String? @map("updated_by")
+  updatedBy   User?   @relation("UserUpdater", fields: [updatedById], references: [id])
+  updaterOf   User[]  @relation("UserUpdater")
 
-  deletedBy String? @map("deleted_by")
-  deleter   User?   @relation("UserDeleter", fields: [deletedBy], references: [id])
-  deleterOf User[]  @relation("UserDeleter")
+  deletedById String? @map("deleted_by")
+  deletedBy   User?   @relation("UserDeleter", fields: [deletedById], references: [id])
+  deleterOf   User[]  @relation("UserDeleter")
 
   @@map("user")
 }

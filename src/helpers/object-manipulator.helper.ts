@@ -15,18 +15,19 @@ export class ObjectManipulator {
   }
 
   /**
-   * Exclude specified keys from an object
-   * @param obj The object to be manipulated
-   * @param keys The keys to be deleted
-   * @returns The object without the specified keys
+   * Excludes specific keys from an object and returns a new object without those keys.
+   *
+   * @template T - The type of the object.
+   * @param {T} obj - The object to exclude keys from.
+   * @param {(keyof T)[]} keys - An array of keys to be excluded from the object.
+   * @returns {Partial<T>} - A new object with the specified keys excluded.
+   *
+   * @example
+   * const user = { id: '1', username: 'john_doe', password: 'secret' };
+   * const cleanUser = ObjectManipulator.exclude(user, ['password']);
+   * console.log(cleanUser); // Output: { id: '1', username: 'john_doe' }
    */
-  static exclude<T extends object, K extends keyof T>(obj: T, keys: K[]): Partial<T> {
-    return Object.keys(obj).reduce((acc, key) => {
-      if (!keys.includes(key as K)) {
-        acc[key] = obj[key];
-      }
-
-      return acc;
-    }, {} as Partial<T>);
+  static exclude<T extends object>(obj: T, keys: (keyof T)[]): Partial<T> {
+    return Object.fromEntries(Object.entries(obj).filter(([key]) => !keys.includes(key as keyof T))) as Partial<T>;
   }
 }
