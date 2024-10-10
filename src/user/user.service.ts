@@ -8,7 +8,7 @@ import { ListResponse, PaginationDto } from 'src/common';
 import { hasRoles, ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
-import { CurrentUser } from './interfaces';
+import { CurrentUser, UserResponse, UserSummary } from './interfaces';
 
 const USER_INCLUDE = {
   createdBy: { select: { id: true, username: true, email: true } },
@@ -29,26 +29,24 @@ export class UserService {
     this.user = this.prismaService.user;
   }
 
-  async create(createUserDto: CreateUserDto): Promise<Partial<User>> {
+  async create(createUserDto: CreateUserDto): Promise<UserResponse> {
     try {
       const { password, ...data } = createUserDto;
       this.logInfo(`Creating user: ${JSON.stringify(data)}`);
 
       const userPassword = password || this.generateRandomPassword();
+      console.log('🚀 ~ UserService ~ create ~ userPassword:', userPassword);
 
       const hashedPassword = bcrypt.hashSync(userPassword, 10);
 
       const newUser = await this.user.create({ data: { ...data, password: hashedPassword }, include: USER_INCLUDE });
 
-      const cleanUser = ObjectManipulator.exclude(newUser, ['password', 'createdById', 'updatedById', 'deletedById']);
+      const cleanUser = this.excludeFields(newUser);
 
       return { ...cleanUser, password: userPassword };
     } catch (error) {
       this.logError(error);
-      throw new RpcException({
-        status: HttpStatus.BAD_REQUEST,
-        message: 'Error creating the user',
-      });
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error creating the user' });
     }
   }
 
@@ -77,7 +75,7 @@ export class UserService {
     }
   }
 
-  async findOne(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+  async findOne(id: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`findOne() - ${id}, requesting: ${currentUser.id}`);
       const isAdmin = hasRoles(currentUser.roles, [Role.Admin]);
@@ -95,7 +93,7 @@ export class UserService {
     }
   }
 
-  async findByUsername(username: string, currentUser: CurrentUser): Promise<Partial<User>> {
+  async findByUsername(username: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`findByUsername() - ${username}, requesting: ${currentUser.id}`);
       const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
@@ -113,24 +111,7 @@ export class UserService {
     }
   }
 
-  async findOneWithMeta(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
-    try {
-      this.logInfo(`findOneWithMeta() - ${id}, requesting: ${currentUser.id}`);
-      const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
-      const where = idAdmin ? { id } : { id, deletedAt: null };
-
-      const user = await this.user.findUnique({ where, include: USER_INCLUDE });
-
-      if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
-
-      return ObjectManipulator.exclude(user, ['password', 'createdById', 'updatedById', 'deletedById']);
-    } catch (error) {
-      this.logError(error);
-      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error fetching the user' });
-    }
-  }
-
-  async findOneWithSummary(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+  async findOneWithSummary(id: string, currentUser: CurrentUser): Promise<UserSummary> {
     try {
       this.logger.log(`findOneWithSummary() - ${id}, requesting: ${currentUser.id}`);
       const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
@@ -147,7 +128,7 @@ export class UserService {
     }
   }
 
-  async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<Partial<User>> {
+  async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
       const { id, ...data } = updateUserDto;
@@ -167,7 +148,7 @@ export class UserService {
     }
   }
 
-  async remove(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+  async remove(id: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`Removing user: ${id}, requesting: ${currentUser.id}`);
 
@@ -189,7 +170,7 @@ export class UserService {
     }
   }
 
-  async restore(id: string, currentUser: CurrentUser): Promise<Partial<User>> {
+  async restore(id: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`Restoring user: ${id}, requesting: ${currentUser.id}`);
       const user = await this.findOne(id, currentUser);
@@ -222,8 +203,8 @@ export class UserService {
     return generatedPassword;
   }
 
-  private excludeFields(user: User) {
-    return ObjectManipulator.exclude(user, EXCLUDE_FIELDS);
+  private excludeFields(user: User): UserResponse {
+    return ObjectManipulator.exclude<User>(user, EXCLUDE_FIELDS) as UserResponse;
   }
 
   private logInfo(message: string) {

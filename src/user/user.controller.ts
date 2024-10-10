@@ -6,7 +6,7 @@ import { isUUID } from 'class-validator';
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { UserService } from './user.service';
-import { CurrentUser } from './interfaces';
+import { CurrentUser, UserResponse, UserSummary } from './interfaces';
 
 @Controller()
 export class UserController {
@@ -26,10 +26,10 @@ export class UserController {
    * Handles the 'users.create' message pattern to create a new user.
    *
    * @param {CreateUserDto} createUserDto - The data transfer object containing the information to create the user.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the created user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the created user object, excluding sensitive information.
    */
   @MessagePattern('users.create')
-  create(@Payload() createUserDto: CreateUserDto): Promise<Partial<User>> {
+  create(@Payload() createUserDto: CreateUserDto): Promise<UserResponse> {
     return this.usersService.create(createUserDto);
   }
 
@@ -49,10 +49,10 @@ export class UserController {
    * Handles the 'users.find.id' message pattern to retrieve a user by their ID.
    *
    * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the found user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.id')
-  findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+  findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserResponse> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
@@ -64,38 +64,23 @@ export class UserController {
    * Handles the 'users.find.username' message pattern to retrieve a user by their username.
    *
    * @param {string} username - The username of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the found user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.username')
-  findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<Partial<User>> {
+  findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<UserResponse> {
     const { username, user } = payload;
 
     return this.usersService.findByUsername(username, user);
   }
 
   /**
-   * Handles the 'users.find.meta' message pattern to retrieve a user by their ID, including additional metadata.
-   *
-   * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the found user object with metadata, excluding sensitive information.
-   */
-  @MessagePattern('users.find.meta')
-  findMeta(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
-    const { id, user } = payload;
-
-    if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
-
-    return this.usersService.findOneWithMeta(id, user);
-  }
-
-  /**
    * Handles the 'users.find.summary' message pattern to retrieve a user by their ID with a summary of basic information.
    *
    * @param {string} id - The ID of the user to retrieve.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the found user object containing only basic information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the found user object containing only basic information.
    */
   @MessagePattern('users.find.summary')
-  findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+  findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserSummary> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
@@ -107,10 +92,10 @@ export class UserController {
    * Handles the 'users.update' message pattern to update a user.
    *
    * @param {UpdateUserDto} updateUserDto - The data transfer object containing the information to update the user.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.update')
-  update(@Payload() payload: { updateUserDto: UpdateUserDto; user: CurrentUser }): Promise<Partial<User>> {
+  update(@Payload() payload: { updateUserDto: UpdateUserDto; user: CurrentUser }): Promise<UserResponse> {
     const { updateUserDto, user } = payload;
 
     return this.usersService.update(updateUserDto, user);
@@ -120,10 +105,10 @@ export class UserController {
    * Handles the 'users.remove' message pattern to soft delete a user.
    *
    * @param {string} id - The ID of the user to remove.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.remove')
-  remove(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+  remove(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserResponse> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
@@ -135,10 +120,10 @@ export class UserController {
    * Handles the 'users.restore' message pattern to restore a previously disabled user.
    *
    * @param {string} id - The ID of the user to restore.
-   * @returns {Promise<Partial<User>>} A promise that resolves to the updated user object, excluding sensitive information.
+   * @returns {Promise<UserResponse>} A promise that resolves to the updated user object, excluding sensitive information.
    */
   @MessagePattern('users.restore')
-  restore(@Payload() payload: { id: string; user: CurrentUser }): Promise<Partial<User>> {
+  restore(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserResponse> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
