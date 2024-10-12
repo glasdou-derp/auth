@@ -52,7 +52,13 @@ export class UserService {
     const where = isAdmin ? {} : { deletedAt: null };
 
     const [data, total] = await Promise.all([
-      this.user.findMany({ take: limit, skip: (page - 1) * limit, where, orderBy: { createdAt: 'desc' } }),
+      this.user.findMany({
+        take: limit,
+        skip: (page - 1) * limit,
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: USER_INCLUDE,
+      }),
       this.user.count({ where }),
     ]);
 
@@ -60,7 +66,7 @@ export class UserService {
 
     return {
       meta: { total, page, lastPage },
-      data: data.map((item) => ObjectManipulator.exclude(item, ['password'])),
+      data: data.map((item) => this.excludeFields(item)),
     };
   }
 
