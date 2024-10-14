@@ -1,7 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PaginationDto } from 'src/common';
 import { ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -46,11 +45,7 @@ describe('UserService', () => {
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [
-        UserService,
-        { provide: PrismaService, useValue: mockPrisma },
-        { provide: WINSTON_MODULE_NEST_PROVIDER, useValue: { log: jest.fn(), error: jest.fn() } },
-      ],
+      providers: [UserService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile();
 
     userService = moduleRef.get<UserService>(UserService);
@@ -124,6 +119,7 @@ describe('UserService', () => {
         skip: 0,
         where: { deletedAt: null },
         orderBy: { createdAt: 'desc' },
+        include: USER_INCLUDE,
       });
       expect(mockPrisma.user.count).toHaveBeenCalledWith({ where: { deletedAt: null } });
     });
@@ -141,6 +137,7 @@ describe('UserService', () => {
         skip: 0,
         where: {},
         orderBy: { createdAt: 'desc' },
+        include: USER_INCLUDE,
       });
       expect(mockPrisma.user.count).toHaveBeenCalledWith({ where: {} });
     });

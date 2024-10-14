@@ -1,8 +1,7 @@
-import { HttpStatus, Inject, Injectable, LoggerService } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
 import * as bcrypt from 'bcrypt';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { envs } from 'src/config';
 import { ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -12,9 +11,9 @@ import { AuthResponse, JwtPayload, SignedToken } from './interfaces';
 @Injectable()
 export class AuthService {
   private readonly user: PrismaService['user'];
+  private readonly logger = new Logger(AuthService.name);
 
   constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
     private readonly jwtService: JwtService,
     private readonly prismaService: PrismaService,
   ) {

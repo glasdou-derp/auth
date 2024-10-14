@@ -1,6 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { User } from '@prisma/client';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ListResponse, PaginationDto } from 'src/common';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
@@ -37,11 +36,7 @@ describe('UserController', () => {
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [
-        UserService,
-        { provide: PrismaService, useValue: mockPrisma },
-        { provide: WINSTON_MODULE_NEST_PROVIDER, useValue: { log: jest.fn(), error: jest.fn() } },
-      ],
+      providers: [UserService, { provide: PrismaService, useValue: mockPrisma }],
     }).compile();
 
     userService = moduleRef.get<UserService>(UserService);
