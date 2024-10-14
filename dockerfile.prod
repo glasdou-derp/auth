@@ -47,6 +47,9 @@ COPY --from=build /usr/src/app/dist ./dist
 COPY --from=build /usr/src/app/prisma ./prisma
 COPY --from=build /usr/src/app/package.json ./package.json
 
+# Install pnpm in the production stage
+RUN npm install -g pnpm
+
 ENV NODE_ENV=production
 
 USER node
