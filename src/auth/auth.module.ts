@@ -6,6 +6,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { NatsModule } from 'src/transports/nats.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
+import { RedisModule } from 'src/redis/redis.module';
 
 @Module({
   controllers: [AuthController],
@@ -17,6 +18,7 @@ import { AuthService } from './auth.service';
       secret: envs.jwtSecret,
       signOptions: { expiresIn: '4h' },
     }),
+    RedisModule,
   ],
 })
 export class AuthModule {}

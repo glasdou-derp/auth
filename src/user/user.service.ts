@@ -1,4 +1,4 @@
-import { HttpStatus, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
@@ -8,6 +8,7 @@ import { handleException, hasRoles, ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { CurrentUser, UserResponse, UserSummary } from './interfaces';
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 
 const USER_INCLUDE = {
   createdBy: { select: { id: true, username: true, email: true } },
@@ -22,7 +23,10 @@ export class UserService {
   private readonly logger = new Logger(UserService.name);
   private readonly user: PrismaService['user'];
 
-  constructor(private readonly prismaService: PrismaService) {
+  constructor(
+    private readonly prismaService: PrismaService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {
     this.user = this.prismaService.user;
   }
 
@@ -37,6 +41,8 @@ export class UserService {
     const newUser = await this.user.create({ data: { ...data, password: hashedPassword }, include: USER_INCLUDE });
 
     const cleanUser = this.excludeFields(newUser);
+
+    this.clearCache();
 
     return { ...cleanUser, password: userPassword };
   }
@@ -105,6 +111,17 @@ export class UserService {
     return user;
   }
 
+  async findByIds(ids: string[], currentUser: CurrentUser): Promise<UserSummary[]> {
+    this.logInfo(`findByIds() - ${JSON.stringify(ids)}, requesting: ${currentUser.id}`);
+
+    const data = await this.user.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, username: true, email: true },
+    });
+
+    return data;
+  }
+
   async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<UserResponse> {
     try {
       this.logInfo(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
@@ -117,6 +134,8 @@ export class UserService {
         data: { ...data, updatedById: currentUser.id },
         include: USER_INCLUDE,
       });
+
+      this.clearCache();
 
       return this.excludeFields(updatedUser);
     } catch (error) {
@@ -142,6 +161,8 @@ export class UserService {
         data: { deletedAt: new Date(), deletedById: currentUser.id },
         include: USER_INCLUDE,
       });
+
+      this.clearCache();
 
       return this.excludeFields(updatedUser);
     } catch (error) {
@@ -171,6 +192,8 @@ export class UserService {
         include: USER_INCLUDE,
       });
 
+      this.clearCache();
+
       return this.excludeFields(updatedUser);
     } catch (error) {
       handleException({ error, context: UserService.name, logger: this.logger, message: 'Error restoring the user' });
@@ -199,5 +222,9 @@ export class UserService {
 
   private logError(message: string) {
     this.logger.error(message, { context: UserService.name });
+  }
+
+  private clearCache() {
+    this.cacheManager.reset();
   }
 }

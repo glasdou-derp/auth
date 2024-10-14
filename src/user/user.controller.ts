@@ -1,16 +1,20 @@
-import { Controller, HttpStatus } from '@nestjs/common';
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
+import { Controller, HttpStatus, Inject } from '@nestjs/common';
 import { MessagePattern, Payload, RpcException } from '@nestjs/microservices';
 import { User } from '@prisma/client';
 import { isUUID } from 'class-validator';
 
 import { ListResponse, PaginationDto } from 'src/common';
 import { CreateUserDto, UpdateUserDto } from './dto';
-import { UserService } from './user.service';
 import { CurrentUser, UserResponse, UserSummary } from './interfaces';
+import { UserService } from './user.service';
 
 @Controller()
 export class UserController {
-  constructor(private readonly usersService: UserService) {}
+  constructor(
+    private readonly usersService: UserService,
+    @Inject(CACHE_MANAGER) private readonly cacheManager: Cache,
+  ) {}
 
   /**
    * Handles the 'users.health' message pattern to check the health of the users service.
@@ -52,12 +56,12 @@ export class UserController {
    * @returns {Promise<UserResponse>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.id')
-  findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserResponse> {
+  async findOne(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserResponse> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
-    return this.usersService.findOne(id, user);
+    return this.getCachedResponse(`user:id:${id}`, () => this.usersService.findOne(id, user));
   }
 
   /**
@@ -67,10 +71,10 @@ export class UserController {
    * @returns {Promise<UserResponse>} A promise that resolves to the found user object, excluding sensitive information.
    */
   @MessagePattern('users.find.username')
-  findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<UserResponse> {
+  async findOneByUsername(@Payload() payload: { username: string; user: CurrentUser }): Promise<UserResponse> {
     const { username, user } = payload;
 
-    return this.usersService.findByUsername(username, user);
+    return this.getCachedResponse(`user:username:${username}`, () => this.usersService.findByUsername(username, user));
   }
 
   /**
@@ -80,14 +84,23 @@ export class UserController {
    * @returns {Promise<UserResponse>} A promise that resolves to the found user object containing only basic information.
    */
   @MessagePattern('users.find.summary')
-  findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserSummary> {
+  async findOneWithSummary(@Payload() payload: { id: string; user: CurrentUser }): Promise<UserSummary> {
     const { id, user } = payload;
 
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
-    return this.usersService.findOneWithSummary(id, user);
+    return this.getCachedResponse(`user:summary:${id}`, () => this.usersService.findOneWithSummary(id, user));
   }
 
+  @MessagePattern('users.find.ids')
+  async findByIds(@Payload() payload: { ids: string[]; user: CurrentUser }): Promise<UserSummary[]> {
+    const { ids, user } = payload;
+
+    if (!ids.every((id) => isUUID(id)))
+      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: '[ERROR] Some user IDs are invalid' });
+
+    return this.getCachedResponse(`users:ids:${ids.join(',')}`, () => this.usersService.findByIds(ids, user));
+  }
   /**
    * Handles the 'users.update' message pattern to update a user.
    *
@@ -129,5 +142,16 @@ export class UserController {
     if (!isUUID(id)) throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Invalid user ID' });
 
     return this.usersService.restore(id, user);
+  }
+
+  private async getCachedResponse<T>(cacheKey: string, fetchFunction: () => Promise<T>): Promise<T> {
+    const cachedResponse = await this.cacheManager.get<T>(cacheKey);
+
+    if (cachedResponse) return cachedResponse;
+
+    const response = await fetchFunction();
+    await this.cacheManager.set(cacheKey, response);
+
+    return response;
   }
 }
