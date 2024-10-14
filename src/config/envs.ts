@@ -7,9 +7,9 @@ interface EnvVars {
   DATABASE_URL: string;
   NATS_SERVERS: string[];
   JWT_SECRET: string;
-  LOG_DB_HOST: string;
-  LOG_DB_PORT: number;
-  LOG_DB_KEY: string;
+  REDIS_URL: string;
+  CACHE_TTL: number;
+  REDIS_DB: number;
 }
 
 const envSchema = Joi.object({
@@ -18,9 +18,9 @@ const envSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
   NATS_SERVERS: Joi.array().items(Joi.string()).required(),
   JWT_SECRET: Joi.string().required(),
-  LOG_DB_HOST: Joi.string().required(),
-  LOG_DB_PORT: Joi.number().required(),
-  LOG_DB_KEY: Joi.string().required(),
+  REDIS_URL: Joi.string().required(),
+  CACHE_TTL: Joi.number().required(),
+  REDIS_DB: Joi.number().required(),
 }).unknown(true);
 
 const { error, value } = envSchema.validate({ ...process.env, NATS_SERVERS: process.env.NATS_SERVERS?.split(',') });
@@ -35,7 +35,7 @@ export const envs = {
   databaseUrl: envVars.DATABASE_URL,
   natsServers: envVars.NATS_SERVERS,
   jwtSecret: envVars.JWT_SECRET,
-  logDbHost: envVars.LOG_DB_HOST,
-  logDbPort: envVars.LOG_DB_PORT,
-  logDbKey: envVars.LOG_DB_KEY,
+  redisUrl: envVars.REDIS_URL,
+  cacheTtl: envVars.CACHE_TTL,
+  redisDb: envVars.REDIS_DB,
 };
