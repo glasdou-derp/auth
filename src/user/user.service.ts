@@ -1,9 +1,8 @@
-import { HttpStatus, Inject, Injectable, LoggerService } from '@nestjs/common';
+import { HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { RpcException } from '@nestjs/microservices';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { ListResponse, PaginationDto } from 'src/common';
 import { handleException, hasRoles, ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
@@ -20,12 +19,10 @@ const EXCLUDE_FIELDS: (keyof User)[] = ['password', 'createdById', 'updatedById'
 
 @Injectable()
 export class UserService {
+  private readonly logger = new Logger(UserService.name);
   private readonly user: PrismaService['user'];
 
-  constructor(
-    @Inject(WINSTON_MODULE_NEST_PROVIDER) private readonly logger: LoggerService,
-    private readonly prismaService: PrismaService,
-  ) {
+  constructor(private readonly prismaService: PrismaService) {
     this.user = this.prismaService.user;
   }
 

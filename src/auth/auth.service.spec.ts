@@ -2,7 +2,6 @@ import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
 import { Test, TestingModule } from '@nestjs/testing';
 import * as bcrypt from 'bcrypt';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthService } from './auth.service';
 
@@ -32,7 +31,6 @@ describe('AuthService', () => {
         AuthService,
         { provide: JwtService, useValue: jwtMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: WINSTON_MODULE_NEST_PROVIDER, useValue: { log: jest.fn(), error: jest.fn() } },
       ],
     }).compile();
 

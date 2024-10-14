@@ -1,6 +1,5 @@
 import { JwtService } from '@nestjs/jwt';
 import { Test, TestingModule } from '@nestjs/testing';
-import { WINSTON_MODULE_NEST_PROVIDER } from 'nest-winston';
 
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthController } from './auth.controller';
@@ -34,7 +33,6 @@ describe('AuthController', () => {
         AuthService,
         { provide: JwtService, useValue: jwtMock },
         { provide: PrismaService, useValue: prismaMock },
-        { provide: WINSTON_MODULE_NEST_PROVIDER, useValue: { log: jest.fn(), error: jest.fn() } },
       ],
     }).compile();
     authController = moduleRef.get<AuthController>(AuthController);
