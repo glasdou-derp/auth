@@ -31,20 +31,35 @@ export class UserService {
   }
 
   async create(createUserDto: CreateUserDto): Promise<UserResponse> {
-    const { password, ...data } = createUserDto;
-    this.logInfo(`Creating user: ${JSON.stringify(data)}`);
+    try {
+      const { password, ...data } = createUserDto;
+      this.logInfo(`Creating user: ${JSON.stringify(data)}`);
 
-    const userPassword = password || this.generateRandomPassword();
+      const userPassword = password || this.generateRandomPassword();
 
-    const hashedPassword = bcrypt.hashSync(userPassword, 10);
+      const hashedPassword = bcrypt.hashSync(userPassword, 10);
 
-    const newUser = await this.user.create({ data: { ...data, password: hashedPassword }, include: USER_INCLUDE });
+      const newUser = await this.user.create({ data: { ...data, password: hashedPassword }, include: USER_INCLUDE });
 
-    const cleanUser = this.excludeFields(newUser);
+      const cleanUser = this.excludeFields(newUser);
 
-    this.clearCache();
+      this.clearCache();
 
-    return { ...cleanUser, password: userPassword };
+      return { ...cleanUser, password: userPassword };
+    } catch (error) {
+      if (error.code === 'P2002' && error.meta?.target?.includes('username'))
+        throw new RpcException({ status: HttpStatus.CONFLICT, message: 'Nombre de usuario ya existe' });
+
+      if (error.code === 'P2002' && error.meta?.target?.includes('email'))
+        throw new RpcException({ status: HttpStatus.CONFLICT, message: 'Correo electrónico ya existe' });
+
+      handleException({
+        error,
+        context: UserService.name,
+        logger: this.logger,
+        message: 'Ocurrió un error al crear el usuario',
+      });
+    }
   }
 
   async findAll(pagination: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
