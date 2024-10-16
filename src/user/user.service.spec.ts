@@ -7,6 +7,7 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { CurrentUser, Role, UserResponse, UserSummary } from './interfaces';
 import { UserService } from './user.service';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 const mockPrisma = {
   user: { create: jest.fn(), findMany: jest.fn(), count: jest.fn(), findFirst: jest.fn(), update: jest.fn() },
@@ -45,7 +46,11 @@ describe('UserService', () => {
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [UserService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        UserService,
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: CACHE_MANAGER, useValue: { reset: jest.fn() } },
+      ],
     }).compile();
 
     userService = moduleRef.get<UserService>(UserService);
@@ -94,7 +99,7 @@ describe('UserService', () => {
       const error = new Error('User creation failed');
       mockPrisma.user.create.mockRejectedValue(error);
 
-      await expect(userService.create(createUserDto)).rejects.toThrow('User creation failed');
+      await expect(userService.create(createUserDto)).rejects.toThrow('[ERROR] Ocurrió un error al crear el usuario');
       expect(mockPrisma.user.create).toHaveBeenCalledWith({
         data: { ...createUserDto, password: expect.any(String) },
         include: USER_INCLUDE,

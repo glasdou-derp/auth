@@ -1,3 +1,4 @@
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { Test, TestingModule } from '@nestjs/testing';
 import { User } from '@prisma/client';
 import { ListResponse, PaginationDto } from 'src/common';
@@ -29,18 +30,35 @@ const mockCurrentUser: CurrentUser = {
   createdAt: new Date(),
   updateAt: new Date(),
 };
+const mockUserService = {
+  create: jest.fn(),
+  findAll: jest.fn(),
+  findOne: jest.fn(),
+  findByUsername: jest.fn(),
+  findOneWithSummary: jest.fn(),
+  findByIds: jest.fn(),
+  update: jest.fn(),
+  remove: jest.fn(),
+  restore: jest.fn(),
+};
 
 describe('UserController', () => {
   let userService: UserService;
   let userController: UserController;
+  let cacheManager: Cache;
 
   beforeEach(async () => {
     const moduleRef: TestingModule = await Test.createTestingModule({
-      providers: [UserService, { provide: PrismaService, useValue: mockPrisma }],
+      providers: [
+        { provide: UserService, useValue: mockUserService },
+        { provide: PrismaService, useValue: mockPrisma },
+        { provide: CACHE_MANAGER, useValue: { get: jest.fn(), set: jest.fn() } },
+      ],
     }).compile();
 
     userService = moduleRef.get<UserService>(UserService);
-    userController = new UserController(userService);
+    cacheManager = moduleRef.get<Cache>(CACHE_MANAGER);
+    userController = new UserController(userService, cacheManager);
   });
 
   afterEach(() => {
@@ -112,41 +130,78 @@ describe('UserController', () => {
     const userId = '123e4567-e89b-12d3-a456-426614174000';
     const payload = { id: userId, user: mockCurrentUser };
 
-    it('should return a user by ID', async () => {
-      jest.spyOn(userService, 'findOne').mockImplementation(async () => mockUserResult);
+    it('should return cached response if available', async () => {
+      const cachedUser = mockUserResult;
+
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(cachedUser);
 
       const result = await userController.findOne(payload);
-      expect(result).toBe(mockUserResult);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`user:id:${userId}`);
+      expect(result).toEqual(cachedUser);
+      expect(userService.findOne).not.toHaveBeenCalled();
+    });
+
+    it('should fetch user from service if not cached', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
+      jest.spyOn(userService, 'findOne').mockResolvedValue(mockUserResult);
+      jest.spyOn(cacheManager, 'set').mockResolvedValue(undefined);
+
+      const result = await userController.findOne(payload);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`user:id:${userId}`);
+      expect(userService.findOne).toHaveBeenCalledWith(userId, mockCurrentUser);
+      expect(cacheManager.set).toHaveBeenCalledWith(`user:id:${userId}`, mockUserResult);
+      expect(result).toEqual(mockUserResult);
+    });
+
+    it('should throw an error if user ID is invalid', async () => {
+      const invalidPayload = { id: 'invalid-id', user: mockCurrentUser };
+
+      await expect(userController.findOne(invalidPayload)).rejects.toThrow('Invalid user ID');
     });
 
     it('should throw an error if user retrieval fails', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
       jest.spyOn(userService, 'findOne').mockImplementation(async () => {
         throw new Error('User retrieval failed');
       });
 
       await expect(userController.findOne(payload)).rejects.toThrow('User retrieval failed');
     });
-
-    it('should throw an error if the user ID is invalid', async () => {
-      try {
-        await userController.findOne({ id: 'invalid-id', user: mockCurrentUser });
-      } catch (error) {
-        expect(error).toEqual(new Error('Invalid user ID'));
-      }
-    });
   });
 
   describe('findOneByUsername', () => {
-    const payload = { username: mockUserResult.username, user: mockCurrentUser };
+    const username = 'testuser';
+    const payload = { username, user: mockCurrentUser };
 
-    it('should return a user by username', async () => {
-      jest.spyOn(userService, 'findByUsername').mockImplementation(async () => mockUserResult);
+    it('should return cached response if available', async () => {
+      const cachedUser = mockUserResult;
+
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(cachedUser);
 
       const result = await userController.findOneByUsername(payload);
-      expect(result).toBe(mockUserResult);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`user:username:${username}`);
+      expect(result).toEqual(cachedUser);
+      expect(userService.findByUsername).not.toHaveBeenCalled();
+    });
+
+    it('should fetch user from service if not cached', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
+      jest.spyOn(userService, 'findByUsername').mockResolvedValue(mockUserResult);
+      jest.spyOn(cacheManager, 'set').mockResolvedValue(undefined);
+
+      const result = await userController.findOneByUsername(payload);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`user:username:${username}`);
+      expect(userService.findByUsername).toHaveBeenCalledWith(username, mockCurrentUser);
+      expect(cacheManager.set).toHaveBeenCalledWith(`user:username:${username}`, mockUserResult);
+      expect(result).toEqual(mockUserResult);
     });
 
     it('should throw an error if user retrieval by username fails', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
       jest.spyOn(userService, 'findByUsername').mockImplementation(async () => {
         throw new Error('User retrieval by username failed');
       });
@@ -180,6 +235,50 @@ describe('UserController', () => {
       } catch (error) {
         expect(error).toEqual(new Error('Invalid user ID'));
       }
+    });
+  });
+
+  describe('findByIds', () => {
+    const userIds = ['123e4567-e89b-12d3-a456-426614174000', '123e4567-e89b-12d3-a456-426614174001'];
+    const payload = { ids: userIds, user: mockCurrentUser };
+    const userSummaries: UserSummary[] = [mockUserSummary, { id: '2', username: 'child', email: 'child@google.com' }];
+
+    it('should return cached response if available', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(userSummaries);
+
+      const result = await userController.findByIds(payload);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`users:ids:${userIds.join(',')}`);
+      expect(result).toEqual(userSummaries);
+      expect(userService.findByIds).not.toHaveBeenCalled();
+    });
+
+    it('should fetch user summaries from service if not cached', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
+      jest.spyOn(userService, 'findByIds').mockResolvedValue(userSummaries);
+      jest.spyOn(cacheManager, 'set').mockResolvedValue(undefined);
+
+      const result = await userController.findByIds(payload);
+
+      expect(cacheManager.get).toHaveBeenCalledWith(`users:ids:${userIds.join(',')}`);
+      expect(userService.findByIds).toHaveBeenCalledWith(userIds, mockCurrentUser);
+      expect(cacheManager.set).toHaveBeenCalledWith(`users:ids:${userIds.join(',')}`, userSummaries);
+      expect(result).toEqual(userSummaries);
+    });
+
+    it('should throw an error if some user IDs are invalid', async () => {
+      const invalidPayload = { ids: ['invalid-id', '123e4567-e89b-12d3-a456-426614174001'], user: mockCurrentUser };
+
+      await expect(userController.findByIds(invalidPayload)).rejects.toThrow('[ERROR] Some user IDs are invalid');
+    });
+
+    it('should throw an error if user summaries retrieval fails', async () => {
+      jest.spyOn(cacheManager, 'get').mockResolvedValue(null);
+      jest.spyOn(userService, 'findByIds').mockImplementation(async () => {
+        throw new Error('User summaries retrieval failed');
+      });
+
+      await expect(userController.findByIds(payload)).rejects.toThrow('User summaries retrieval failed');
     });
   });
 

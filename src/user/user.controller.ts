@@ -101,6 +101,7 @@ export class UserController {
 
     return this.getCachedResponse(`users:ids:${ids.join(',')}`, () => this.usersService.findByIds(ids, user));
   }
+
   /**
    * Handles the 'users.update' message pattern to update a user.
    *
