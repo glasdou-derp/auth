@@ -127,6 +127,7 @@ export class UserService {
   }
 
   async findByIds(ids: string[], currentUser: CurrentUser): Promise<UserSummary[]> {
+    console.log('🚀 ~ UserService ~ findByIds ~ ids:', ids);
     this.logInfo(`findByIds() - ${JSON.stringify(ids)}, requesting: ${currentUser.id}`);
 
     const data = await this.user.findMany({
