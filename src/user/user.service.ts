@@ -3,12 +3,12 @@ import { RpcException } from '@nestjs/microservices';
 import { Role, User } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 
+import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ListResponse, PaginationDto } from 'src/common';
-import { handleException, hasRoles, ObjectManipulator } from 'src/helpers';
+import { ExceptionHandler, hasRoles, ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { CreateUserDto, UpdateUserDto } from './dto';
 import { CurrentUser, UserResponse, UserSummary } from './interfaces';
-import { Cache, CACHE_MANAGER } from '@nestjs/cache-manager';
 
 const USER_INCLUDE = {
   createdBy: { select: { id: true, username: true, email: true } },
@@ -22,6 +22,7 @@ const EXCLUDE_FIELDS: (keyof User)[] = ['password', 'createdById', 'updatedById'
 export class UserService {
   private readonly logger = new Logger(UserService.name);
   private readonly user: PrismaService['user'];
+  private readonly exHandler = new ExceptionHandler(this.logger, UserService.name);
 
   constructor(
     private readonly prismaService: PrismaService,
@@ -33,7 +34,7 @@ export class UserService {
   async create(createUserDto: CreateUserDto): Promise<UserResponse> {
     try {
       const { password, ...data } = createUserDto;
-      this.logInfo(`Creating user: ${JSON.stringify(data)}`);
+      this.logger.log(`Creating user: ${JSON.stringify(data)}`);
 
       const userPassword = password || this.generateRandomPassword();
 
@@ -53,17 +54,12 @@ export class UserService {
       if (error.code === 'P2002' && error.meta?.target?.includes('email'))
         throw new RpcException({ status: HttpStatus.CONFLICT, message: 'Correo electrónico ya existe' });
 
-      handleException({
-        error,
-        context: UserService.name,
-        logger: this.logger,
-        message: 'Ocurrió un error al crear el usuario',
-      });
+      this.exHandler.process(error, 'Error creating the user');
     }
   }
 
   async findAll(pagination: PaginationDto, user: CurrentUser): Promise<ListResponse<User>> {
-    this.logInfo(`findAll() - ${JSON.stringify(pagination)}, requesting: ${user.id}`);
+    this.logger.log(`Fetching users: ${JSON.stringify(pagination)}, user: ${user.id} - ${user.username}`);
     const { page, limit } = pagination;
     const isAdmin = hasRoles(user.roles, [Role.Admin]);
 
@@ -89,46 +85,50 @@ export class UserService {
   }
 
   async findOne(id: string, currentUser: CurrentUser): Promise<UserResponse> {
-    this.logInfo(`findOne() - ${id}, requesting: ${currentUser.id}`);
+    this.logger.log(`Fetching user: ${id}, user: ${currentUser.id} - ${currentUser.username}`);
     const isAdmin = hasRoles(currentUser.roles, [Role.Admin]);
 
     const where = isAdmin ? { id } : { id, deletedAt: null };
 
     const user = await this.user.findFirst({ where, include: USER_INCLUDE });
 
-    if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
+    if (!user)
+      throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `[ERROR] User with id ${id} not found` });
 
     return this.excludeFields(user);
   }
 
   async findByUsername(username: string, currentUser: CurrentUser): Promise<UserResponse> {
-    this.logInfo(`findByUsername() - ${username}, requesting: ${currentUser.id}`);
+    this.logger.log(`Fetching user: ${username}, user: ${currentUser.id} - ${currentUser.username}`);
     const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
     const where = idAdmin ? { username } : { username, deletedAt: null };
 
     const user = await this.user.findFirst({ where, include: USER_INCLUDE });
 
     if (!user)
-      throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with username ${username} not found` });
+      throw new RpcException({
+        status: HttpStatus.NOT_FOUND,
+        message: `[ERROR] User with username ${username} not found`,
+      });
 
     return this.excludeFields(user);
   }
 
   async findOneWithSummary(id: string, currentUser: CurrentUser): Promise<UserSummary> {
-    this.logger.log(`findOneWithSummary() - ${id}, requesting: ${currentUser.id}`);
+    this.logger.log(`Fetching user: ${id}, user: ${currentUser.id} - ${currentUser.username}`);
     const idAdmin = hasRoles(currentUser.roles, [Role.Admin]);
     const where = idAdmin ? { id } : { id, deletedAt: null };
 
     const user = await this.user.findFirst({ where, select: { id: true, username: true, email: true } });
 
-    if (!user) throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `User with id ${id} not found` });
+    if (!user)
+      throw new RpcException({ status: HttpStatus.NOT_FOUND, message: `[ERROR] User with id ${id} not found` });
 
     return user;
   }
 
   async findByIds(ids: string[], currentUser: CurrentUser): Promise<UserSummary[]> {
-    console.log('🚀 ~ UserService ~ findByIds ~ ids:', ids);
-    this.logInfo(`findByIds() - ${JSON.stringify(ids)}, requesting: ${currentUser.id}`);
+    this.logger.log(`Fetching users: ${ids}, user: ${currentUser.id} - ${currentUser.username}`);
 
     const data = await this.user.findMany({
       where: { id: { in: ids } },
@@ -140,7 +140,9 @@ export class UserService {
 
   async update(updateUserDto: UpdateUserDto, currentUser: CurrentUser): Promise<UserResponse> {
     try {
-      this.logInfo(`Updating user: ${JSON.stringify(updateUserDto)}, requesting: ${currentUser.id}`);
+      this.logger.log(
+        `Updating user: ${JSON.stringify(updateUserDto)}, user: ${currentUser.id} - ${currentUser.username}`,
+      );
       const { id, ...data } = updateUserDto;
 
       await this.findOne(id, currentUser);
@@ -155,14 +157,13 @@ export class UserService {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      this.logError(error);
-      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: 'Error updating the user' });
+      this.exHandler.process(error, 'Error updating the user');
     }
   }
 
   async remove(id: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
-      this.logInfo(`Removing user: ${id}, requesting: ${currentUser.id}`);
+      this.logger.log(`Removing user: ${id}, user: ${currentUser.id} - ${currentUser.username}`);
 
       const user = await this.findOne(id, currentUser);
 
@@ -182,18 +183,13 @@ export class UserService {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      handleException({
-        error,
-        context: UserService.name,
-        logger: this.logger,
-        message: 'Error removing the user',
-      });
+      this.exHandler.process(error, 'Error removing the user');
     }
   }
 
   async restore(id: string, currentUser: CurrentUser): Promise<UserResponse> {
     try {
-      this.logInfo(`Restoring user: ${id}, requesting: ${currentUser.id}`);
+      this.logger.log(`Restoring user: ${id}, user: ${currentUser.id} - ${currentUser.username}`);
       const user = await this.findOne(id, currentUser);
 
       if (user.deletedAt === null)
@@ -212,7 +208,7 @@ export class UserService {
 
       return this.excludeFields(updatedUser);
     } catch (error) {
-      handleException({ error, context: UserService.name, logger: this.logger, message: 'Error restoring the user' });
+      this.exHandler.process(error, 'Error restoring the user');
     }
   }
 
@@ -230,14 +226,6 @@ export class UserService {
 
   private excludeFields(user: User): UserResponse {
     return ObjectManipulator.exclude<User>(user, EXCLUDE_FIELDS) as UserResponse;
-  }
-
-  private logInfo(message: string) {
-    this.logger.log(message, { context: UserService.name });
-  }
-
-  private logError(message: string) {
-    this.logger.error(message, { context: UserService.name });
   }
 
   private clearCache() {

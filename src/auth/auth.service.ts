@@ -3,22 +3,21 @@ import { JwtService } from '@nestjs/jwt';
 import { RpcException } from '@nestjs/microservices';
 import * as bcrypt from 'bcrypt';
 import { envs } from 'src/config';
-import { ObjectManipulator } from 'src/helpers';
+import { ExceptionHandler, ObjectManipulator } from 'src/helpers';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { LoginDto } from './dto';
 import { AuthResponse, JwtPayload, SignedToken } from './interfaces';
 
 @Injectable()
 export class AuthService {
-  private readonly user: PrismaService['user'];
+  private readonly user = this.prismaService.user;
   private readonly logger = new Logger(AuthService.name);
+  private readonly exHandler = new ExceptionHandler(this.logger, AuthService.name);
 
   constructor(
     private readonly jwtService: JwtService,
     private readonly prismaService: PrismaService,
-  ) {
-    this.user = this.prismaService.user;
-  }
+  ) {}
 
   /**
    * Authenticates a user based on the provided login credentials.
@@ -31,23 +30,23 @@ export class AuthService {
    */
   async login(loginDto: LoginDto): Promise<AuthResponse> {
     try {
-      this.logger.log(`Authenticating user with username: ${loginDto.username}`, { context: AuthService.name });
+      this.logger.log(`Authenticating user with username: ${loginDto.username}`);
       const { username, password } = loginDto;
 
       const user = await this.user.findFirst({ where: { username } });
 
-      if (!user) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid credentials' });
+      if (!user) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: '[ERROR] Invalid credentials' });
 
       const isValidPassword = bcrypt.compareSync(password, user.password);
 
-      if (!isValidPassword) throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid credentials' });
+      if (!isValidPassword)
+        throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: '[ERROR] Invalid credentials' });
 
       ObjectManipulator.safeDelete(user, 'password');
 
       return { user, token: this.signToken({ id: user.id }) };
     } catch (error) {
-      this.logger.error(error.message, error.stack);
-      throw new RpcException({ status: HttpStatus.BAD_REQUEST, message: error.message });
+      this.exHandler.process(error);
     }
   }
 
@@ -61,7 +60,7 @@ export class AuthService {
    */
   async verifyToken(token: string): Promise<AuthResponse> {
     try {
-      this.logger.log('Verifying token', { context: AuthService.name });
+      this.logger.log('Verifying token');
 
       const payload = this.jwtService.verify<SignedToken>(token, { secret: envs.jwtSecret });
 
@@ -75,8 +74,7 @@ export class AuthService {
 
       return { user: user, token: tokenSigned };
     } catch (error) {
-      this.logger.error(error.message, error.stack);
-      throw new RpcException({ status: HttpStatus.UNAUTHORIZED, message: 'Invalid token' });
+      this.exHandler.process(error);
     }
   }
 
